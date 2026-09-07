@@ -6,6 +6,10 @@ import { SiteHeader } from '@/components/SiteHeader'
 
 import './globals.css'
 
+// Every page reads the session and most pages query Postgres. Render at request
+// time so Vercel never tries to contact the production database during builds.
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: `${APP_NAME} — ${APP_TAGLINE}`,
   description:
