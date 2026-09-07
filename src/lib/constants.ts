@@ -8,7 +8,7 @@ export const APP_NAME = 'Wrapbid'
 export const APP_TAGLINE = 'Auction your commute.'
 
 // ---------------------------------------------------------------- enums
-// SQLite + Prisma supports no `enum`, so these are the source of truth and the
+// These unions are the application source of truth and the
 // DB columns are plain strings validated against them.
 
 export const ROLES = ['DRIVER', 'ADVERTISER', 'ADMIN'] as const

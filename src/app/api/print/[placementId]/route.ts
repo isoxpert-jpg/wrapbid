@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { PDFDocument, degrees, rgb } from 'pdf-lib'
 import QRCode from 'qrcode'
 import sharp from 'sharp'
@@ -7,6 +5,7 @@ import { prisma } from '@/lib/db'
 import { requireRole } from '@/lib/session'
 import { getVehicleTemplate } from '@/lib/vehicleTemplates'
 import { checkPlotterFit, DEFAULT_PLOTTER } from '@/lib/plotterProfiles'
+import { downloadPrivateObject } from '@/lib/storage'
 
 const ptPerCm=72/2.54
 export async function GET(request:Request,{params}:{params:Promise<{placementId:string}>}){
@@ -16,7 +15,7 @@ export async function GET(request:Request,{params}:{params:Promise<{placementId:
  const resolved=getVehicleTemplate({make:placement.listing.vehicle.make,model:placement.listing.vehicle.model,year:placement.listing.vehicle.year,bodyType:placement.listing.vehicle.bodyType});const panel=resolved.template?.panels.find(p=>p.code===placement.listing.panelTypeCode)
  if(!panel)return new Response('No printable panel definition',{status:422})
  let artwork:Buffer
- if(placement.creative.filePath.startsWith('/')){const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1200"><rect width="100%" height="100%" fill="${placement.creative.dominantHex??'#e84b18'}"/><text x="1200" y="650" text-anchor="middle" font-family="Arial" font-size="96" font-weight="bold" fill="white">${placement.creative.campaign.name.replace(/[<>&]/g,'')}</text></svg>`;artwork=await sharp(Buffer.from(svg)).png().toBuffer()}else artwork=await sharp(await readFile(join(process.cwd(),'storage','creatives',placement.creative.filePath))).png().toBuffer()
+ if(placement.creative.filePath.startsWith('/')){const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1200"><rect width="100%" height="100%" fill="${placement.creative.dominantHex??'#e84b18'}"/><text x="1200" y="650" text-anchor="middle" font-family="Arial" font-size="96" font-weight="bold" fill="white">${placement.creative.campaign.name.replace(/[<>&]/g,'')}</text></svg>`;artwork=await sharp(Buffer.from(svg)).png().toBuffer()}else artwork=await sharp(await downloadPrivateObject(placement.creative.filePath)).png().toBuffer()
  const qrValue=placement.listing.installation?`${new URL(request.url).origin}/q/${placement.listing.installation.qrSlug}`:`${new URL(request.url).origin}/listing/${placement.listing.id}`
  const qr=await QRCode.toBuffer(qrValue,{type:'png',width:600,margin:2,errorCorrectionLevel:'H'})
  const plotterFit=checkPlotterFit(panel.safeAreaCm.width,panel.safeAreaCm.height);if(!plotterFit.fits)return new Response(`Panel does not fit ${DEFAULT_PLOTTER.configuredPrintableWidthMm} mm printable width`,{status:422})

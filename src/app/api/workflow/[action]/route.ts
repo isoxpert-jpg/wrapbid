@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 
@@ -11,6 +9,7 @@ import { requireRole } from '@/lib/session'
 import { MAX_UPLOAD_BYTES, ALLOWED_IMAGE_MIME } from '@/lib/constants'
 import { nextSpotCheckDate, openVerificationCheck } from '@/lib/trust'
 import { plateFingerprint } from '@/lib/identity'
+import { uploadPrivateObject } from '@/lib/storage'
 import {
   brandReviewSchema,
   brandSchema,
@@ -227,12 +226,11 @@ export async function POST(
       if (!(file instanceof File) || file.size === 0 || file.size > MAX_UPLOAD_BYTES) throw new Error('Choose an image under 5 MB.')
       if (!ALLOWED_IMAGE_MIME.includes(file.type as never)) throw new Error('Use a PNG, JPEG, or WebP image.')
       const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg'
-      const directory = join(process.cwd(), 'storage', 'proofs')
-      await mkdir(directory, { recursive: true })
       const filename = `${randomUUID()}.${extension}`
-      await writeFile(join(directory, filename), Buffer.from(await file.arrayBuffer()))
+      const objectPath = `proofs/${check.installationId}/${filename}`
+      await uploadPrivateObject(objectPath, Buffer.from(await file.arrayBuffer()), file.type)
       await prisma.$transaction([
-        prisma.installationProof.create({ data: { installationId: check.installationId, checkId: check.id, photoPath: filename, mimeType: file.type, capturedAt: new Date() } }),
+        prisma.installationProof.create({ data: { installationId: check.installationId, checkId: check.id, photoPath: objectPath, mimeType: file.type, capturedAt: new Date() } }),
         prisma.verificationCheck.update({ where: { id: check.id }, data: { status: 'SUBMITTED', completedAt: new Date() } }),
       ])
       return back(request, '/driver/agreements', 'ok', 'Fresh proof submitted for review.')
@@ -276,13 +274,12 @@ export async function POST(
       const [metadata, stats] = await Promise.all([image.metadata(), image.stats()])
       if (!metadata.width || !metadata.height) throw new Error('Could not read the artwork dimensions.')
       const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg'
-      const directory = join(process.cwd(), 'storage', 'creatives')
-      await mkdir(directory, { recursive: true })
       const filename = `${randomUUID()}.${extension}`
-      await writeFile(join(directory, filename), bytes)
+      const objectPath = `creatives/${campaignId}/${filename}`
+      await uploadPrivateObject(objectPath, bytes, file.type)
       const dominant = stats.dominant
       const dominantHex = `#${[dominant.r,dominant.g,dominant.b].map(x=>x.toString(16).padStart(2,'0')).join('')}`
-      const creative = await prisma.creative.create({ data: { campaignId, fileName: file.name.slice(0,120), filePath: filename, mimeType: file.type, widthPx: metadata.width, heightPx: metadata.height, dominantHex, isPrimary: form.get('isPrimary') === 'true' } })
+      const creative = await prisma.creative.create({ data: { campaignId, fileName: file.name.slice(0,120), filePath: objectPath, mimeType: file.type, widthPx: metadata.width, heightPx: metadata.height, dominantHex, isPrimary: form.get('isPrimary') === 'true' } })
       if (creative.isPrimary) await prisma.creative.updateMany({ where: { campaignId, id: { not: creative.id } }, data: { isPrimary: false } })
       const source = String(form.get('returnTo') ?? '')
       const destination = source === 'studio' ? `/advertise/studio?campaign=${campaignId}&creative=${creative.id}` : `/advertise/campaigns/${campaignId}`

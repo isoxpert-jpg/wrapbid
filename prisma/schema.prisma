@@ -1,8 +1,7 @@
 // Wrapbid — commute-priced vehicle ad auction marketplace
 //
-// NOTE: SQLite + Prisma supports neither `enum` nor `Json`. Every field that is
-// conceptually an enum is a String, constrained by TypeScript union types in
-// src/lib/constants.ts. Arrays are modelled as join tables.
+// Domain enums remain Strings so database values stay compatible with the
+// existing application validation and seed data.
 //
 // MONEY: every monetary field is an INTEGER number of CENTS. Never a float.
 // DISTANCE: kilometres (Float). PANEL SIZE: centimetres (Float).
@@ -13,7 +12,7 @@ generator client {
 
 // Prisma 7: the connection URL lives in prisma.config.ts, not here.
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // ---------------------------------------------------------------- users
@@ -314,7 +313,7 @@ model Campaign {
   @@index([advertiserId])
 }
 
-/// Join table standing in for an array of panel codes (no Json on SQLite).
+/// Join table for campaign panel targeting.
 model CampaignPanelTarget {
   campaignId    String
   campaign      Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
