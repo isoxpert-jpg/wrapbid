@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 import { APP_NAME } from '@/lib/constants'
 import { prisma } from '@/lib/db'
@@ -10,7 +11,7 @@ export default async function LandingPage() {
 
   return (
     <div className="flex flex-col gap-14">
-      <section className="grid gap-8 border-b-4 pb-10 pt-6 lg:grid-cols-[1fr_280px]" style={{borderColor:'var(--ink)'}}>
+      <section className="grid gap-8 border-b-4 pb-10 pt-6 lg:grid-cols-[1fr_460px]" style={{borderColor:'var(--ink)'}}>
         <div><p className="eyebrow">Vehicle media exchange · PK / AF</p><h1 className="mt-3 max-w-4xl text-5xl font-black uppercase leading-[.9] sm:text-7xl">
           Turn the daily drive into street-level media.
         </h1>
@@ -32,7 +33,7 @@ export default async function LandingPage() {
           <Link href="/studio" className="btn btn-secondary">
             Try the Studio
           </Link>
-        </div></div><aside className="border-l-4 p-5" style={{borderColor:'var(--brand)',background:'var(--ink)',color:'#fffdf6'}}><p className="font-mono text-xs uppercase tracking-widest text-orange-400">Market board</p><div className="mt-5 space-y-5">{[['Inventory','By panel'],['Pricing','By commute'],['Settlement','Monthly'],['Tracking','Proof-led']].map(([a,b])=><div key={a} className="border-b border-stone-700 pb-3"><p className="text-xs uppercase tracking-wider text-stone-400">{a}</p><p className="mt-1 text-xl font-black uppercase">{b}</p></div>)}</div></aside>
+        </div></div><aside className="relative overflow-hidden border-l-4 bg-[#f7f1e5]" style={{borderColor:'var(--brand)'}}><Image src="/higgsfield/panel-car.png" alt="Editorial illustration of a compact hatchback with individual advertising panels marked" width={1024} height={1024} className="h-full min-h-80 w-full object-cover" priority/><div className="absolute bottom-0 left-0 right-0 grid grid-cols-2 bg-[#171713]/95 p-4 text-[#fffdf6]">{[['Inventory','By panel'],['Pricing','By commute'],['Settlement','Monthly'],['Tracking','Proof-led']].map(([a,b])=><div key={a} className="border-l border-orange-500 px-3 py-2"><p className="font-mono text-[10px] uppercase tracking-wider text-stone-400">{a}</p><p className="mt-1 text-sm font-black uppercase">{b}</p></div>)}</div></aside>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-3">
@@ -64,6 +65,14 @@ export default async function LandingPage() {
             <p className="text-sm muted">{c.body}</p>
           </div>
         ))}
+      </section>
+
+      <section className="grid overflow-hidden border-y-4 bg-[#171713] text-[#fffdf6] lg:grid-cols-[1fr_1fr_1fr]" style={{borderColor:'var(--ink)'}}>
+        {[
+          {image:'/higgsfield/route-phone.png',kicker:'01 · Verify',title:'A route, not a home address',body:'Drivers declare commute zones and upload proof. Public listings show useful market coverage while keeping exact addresses private.'},
+          {image:'/higgsfield/panel-car.png',kicker:'02 · Auction',title:'Buy the exact panel',body:'A door, rear glass, hood or roof is its own piece of inventory—with its own dimensions, rent and closing clock.'},
+          {image:'/higgsfield/campaign-map.png',kicker:'03 · Measure',title:'Plan by local movement',body:'Brands compare panel supply against target areas across Pakistan and Afghanistan before committing monthly budget.'},
+        ].map((item)=><article key={item.kicker} className="group border-b border-stone-700 last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0"><Image src={item.image} alt="" width={1024} height={1024} className="aspect-[4/3] w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"/><div className="p-5"><p className="font-mono text-xs uppercase tracking-widest text-orange-400">{item.kicker}</p><h2 className="mt-2 text-xl font-black uppercase">{item.title}</h2><p className="mt-2 text-sm text-stone-300">{item.body}</p></div></article>)}
       </section>
 
       <section className="flex flex-col gap-4">
