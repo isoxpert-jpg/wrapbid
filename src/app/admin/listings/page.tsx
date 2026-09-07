@@ -1,0 +1,4 @@
+import { resolveExpiredAuctions } from '@/lib/auction'
+import { prisma } from '@/lib/db'
+import { formatCents } from '@/lib/pricing'
+export default async function Listings(){await resolveExpiredAuctions();const rows=await prisma.panelListing.findMany({include:{panelType:true,vehicle:{include:{driver:true}},_count:{select:{bids:true}}},orderBy:{createdAt:'desc'}});return <div><h1 className="text-2xl font-bold">All listings</h1><div className="card table-scroll mt-5"><table className="data"><thead><tr><th>Panel</th><th>Driver</th><th>Status</th><th>Rent</th><th>Bids</th><th>Ends</th></tr></thead><tbody>{rows.map(x=><tr key={x.id}><td>{x.panelType.label}</td><td>{x.vehicle.driver.name}</td><td>{x.status}</td><td>{formatCents(x.currentRentCents)}</td><td>{x._count.bids}</td><td>{x.auctionEndsAt.toLocaleString()}</td></tr>)}</tbody></table></div></div>}

@@ -1,0 +1,19 @@
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
+import { PrismaClient } from '@prisma/client'
+
+/**
+ * Prisma 7 requires a driver adapter rather than a datasource URL in the schema.
+ * The client is cached on globalThis so Next.js hot reloads don't open a new
+ * SQLite connection on every edit.
+ */
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
+
+function createClient() {
+  const url = process.env.DATABASE_URL
+  if (!url) throw new Error('DATABASE_URL is not set — see .env.example')
+  return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url }) })
+}
+
+export const prisma = globalForPrisma.prisma ?? createClient()
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma

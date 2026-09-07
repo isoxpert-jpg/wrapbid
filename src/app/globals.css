@@ -1,0 +1,236 @@
+@import 'tailwindcss';
+
+/**
+ * Design tokens. Light is the default; dark is applied both by explicit
+ * [data-theme="dark"] and by system preference.
+ */
+@theme {
+  --color-ink: #171713;
+  --color-ink-soft: #635f55;
+  --color-surface: #fffdf6;
+  --color-canvas: #f0ede3;
+  --color-line: #bdb7a8;
+  --color-brand: #e84b18;
+  --color-brand-soft: #ffe0d2;
+  --color-accent: #f1c40f;
+
+  --color-warn: #b45309;
+  --color-warn-soft: #fff7ed;
+  --color-danger: #b42318;
+  --color-danger-soft: #fef3f2;
+  --color-good: #027a48;
+  --color-good-soft: #ecfdf3;
+
+  --font-sans: 'Arial Narrow', 'Roboto Condensed', 'DIN Condensed', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+}
+
+:root {
+  --ink: #171713;
+  --ink-muted: #635f55;
+  --surface: #fffdf6;
+  --canvas: #f0ede3;
+  --line: #bdb7a8;
+  --brand: #e84b18;
+  --brand-soft: #ffe0d2;
+  --good: #027a48;
+  --good-soft: #ecfdf3;
+  --warn: #b45309;
+  --warn-soft: #fff7ed;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --shadow: 4px 4px 0 rgb(23 23 19 / .12);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --ink: #e9edf3;
+  --ink-muted: #98a2b3;
+  --surface: #161a20;
+  --canvas: #0e1116;
+  --line: #262c35;
+  --brand: #7aa2f7;
+  --brand-soft: #1a2233;
+  --good: #6ee7b7;
+  --good-soft: #10231c;
+  --warn: #fbbf24;
+  --warn-soft: #2a1f0d;
+  --danger: #fca5a5;
+  --danger-soft: #2a1416;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--canvas);
+  background-image: linear-gradient(rgb(23 23 19 / .035) 1px, transparent 1px), linear-gradient(90deg, rgb(23 23 19 / .035) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ------------------------------------------------------------ primitives */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  box-shadow: var(--shadow);
+}
+
+.muted {
+  color: var(--ink-muted);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border-radius: 2px;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: filter 0.15s ease, background 0.15s ease;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.btn-secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: 2px 2px 0 rgb(23 23 19 / .12);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--canvas);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border-radius: 2px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: -1px;
+}
+
+.label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+  color: var(--ink);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.badge-good {
+  background: var(--good-soft);
+  color: var(--good);
+}
+.badge-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.badge-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.badge-brand {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.badge-neutral {
+  background: var(--canvas);
+  color: var(--ink-muted);
+  border: 1px solid var(--line);
+}
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+table.data th {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  background: var(--ink);
+  color: #fffdf6;
+  color: var(--ink-muted);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+table.data td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+h1, h2, h3 { font-stretch: condensed; }
+h1 { letter-spacing: -.035em; }
+code, .num { font-family: var(--font-mono); }
+.industrial-rule { height: 8px; background: repeating-linear-gradient(135deg,var(--brand) 0 12px,var(--ink) 12px 24px); }
+.plate-mark { display:inline-grid; place-items:center; width:2rem; height:2rem; background:var(--brand); color:white; font-family:var(--font-mono); font-weight:900; transform:rotate(-3deg); }
+.eyebrow { font-family:var(--font-mono); font-size:.75rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--brand); }
+.table-scroll {
+  overflow-x: auto;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.mockup-panel { position:absolute; background-size:100% 100%; background-repeat:no-repeat; background-position:center; border:1px solid rgb(255 255 255 / .72); box-shadow:0 2px 10px rgb(0 0 0 / .28); opacity:.88; overflow:hidden; }
+.panel-driver-door { left:54.9%; top:36.8%; width:19.2%; height:34.3%; clip-path:polygon(2% 15%,99% 1%,92% 88%,0 100%); }
+.panel-passenger-door { left:72.6%; top:32.3%; width:17%; height:33.6%; clip-path:polygon(8% 13%,94% 0,100% 68%,62% 95%,0 100%); }
+.panel-rear-windshield { left:72.4%; top:16.5%; width:16.2%; height:18.2%; clip-path:polygon(2% 3%,82% 8%,100% 94%,7% 100%); }
+.panel-tailgate { left:89%; top:31.5%; width:7.5%; height:29%; clip-path:polygon(4% 2%,72% 9%,100% 86%,8% 100%); }
+.panel-rear-quarter { left:82%; top:47%; width:13%; height:19%; clip-path:polygon(8% 0,100% 8%,87% 75%,58% 100%,0 74%); }
+.panel-hood { left:5.8%; top:34.8%; width:46%; height:18.2%; clip-path:polygon(40% 0,100% 15%,69% 100%,0 66%); }
+.panel-roof { left:39.3%; top:11.5%; width:51.3%; height:5.5%; clip-path:polygon(0 8%,90% 0,100% 88%,40% 100%); }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}

@@ -1,0 +1,572 @@
+// Wrapbid — commute-priced vehicle ad auction marketplace
+//
+// NOTE: SQLite + Prisma supports neither `enum` nor `Json`. Every field that is
+// conceptually an enum is a String, constrained by TypeScript union types in
+// src/lib/constants.ts. Arrays are modelled as join tables.
+//
+// MONEY: every monetary field is an INTEGER number of CENTS. Never a float.
+// DISTANCE: kilometres (Float). PANEL SIZE: centimetres (Float).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: the connection URL lives in prisma.config.ts, not here.
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------------------------------------------------------------- users
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  // Role: DRIVER | ADVERTISER | ADMIN
+  role         String
+  createdAt    DateTime @default(now())
+  driverTermsAcceptedAt DateTime?
+
+  vehicles     Vehicle[]
+  brand        Brand?
+  campaigns    Campaign[]
+  bids         Bid[]
+  ledger       LedgerEntry[]
+  fraudSignals FraudSignal[]
+  driverAgreements     Agreement[] @relation("DriverAgreements")
+  advertiserAgreements Agreement[] @relation("AdvertiserAgreements")
+
+  @@index([role])
+}
+
+// ---------------------------------------------------------------- vehicles
+
+model Vehicle {
+  id       String @id @default(cuid())
+  driverId String
+  driver   User   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  make     String
+  model    String
+  year     Int
+  color    String
+  // BodyType: SEDAN | SUV | HATCHBACK | PICKUP | VAN
+  bodyType String
+
+  // Plate is PII-adjacent: stored for verification, shown in full to ADMIN only.
+  // Everywhere else it is masked to the last 4 via maskPlate() in src/lib/privacy.ts.
+  plateNumber String?
+  /// Deterministic hash used to stop one vehicle being registered twice without
+  /// exposing the plate in joins, logs, or marketplace views.
+  plateHash String? @unique
+
+  // VerificationStatus: UNVERIFIED | PENDING_REVIEW | VERIFIED | REJECTED
+  // A vehicle must be VERIFIED before its panels can be listed.
+  verificationStatus String    @default("UNVERIFIED")
+  verifiedAt         DateTime?
+  verificationNotes  String?
+
+  // 1..5, set by admin during verification from the uploaded photos.
+  // Feeds the advertiser-facing match score (paint condition affects ad quality).
+  conditionRating Int?
+
+  createdAt DateTime @default(now())
+
+  commute  CommuteProfile?
+  photos   VehiclePhoto[]
+  listings PanelListing[]
+
+  @@index([driverId])
+  @@index([verificationStatus])
+}
+
+/// Real photos of the driver's actual car. These are the mockup base — an
+/// advertiser's design is perspective-mapped onto a real photo rather than a
+/// generic silhouette (the SVG silhouette in carTemplates.ts is the fallback
+/// when a view has no photo or no calibration).
+model VehiclePhoto {
+  id        String @id @default(cuid())
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  // PhotoView: SIDE_DRIVER | SIDE_PASSENGER | REAR | FRONT | PLATE
+  // PLATE is the number-plate close-up used for verification. It is ADMIN-ONLY
+  // and must never be served into an advertiser-facing mockup.
+  view      String
+  filePath  String
+  mimeType  String
+  widthPx   Int
+  heightPx  Int
+  createdAt DateTime @default(now())
+
+  calibrations PanelCalibration[]
+
+  @@index([vehicleId, view])
+}
+
+/// Four corner points marking where a panel sits within a photo, normalised to
+/// 0..1 of the image. Lets the mockup apply a real perspective transform
+/// (homography → CSS matrix3d, see src/lib/homography.ts) so the design sits on
+/// the panel at the photo's actual angle instead of being pasted on flat.
+/// Corners are ordered: top-left, top-right, bottom-right, bottom-left.
+model PanelCalibration {
+  id             String       @id @default(cuid())
+  vehiclePhotoId String
+  photo          VehiclePhoto @relation(fields: [vehiclePhotoId], references: [id], onDelete: Cascade)
+  panelTypeCode  String
+  panelType      PanelType    @relation(fields: [panelTypeCode], references: [code])
+
+  x1 Float
+  y1 Float
+  x2 Float
+  y2 Float
+  x3 Float
+  y3 Float
+  x4 Float
+  y4 Float
+
+  createdAt DateTime @default(now())
+
+  @@unique([vehiclePhotoId, panelTypeCode])
+}
+
+/// The driver's self-reported commute, plus the exposure figures derived from it.
+/// The derived values are SNAPSHOTTED here rather than recomputed on read, so a
+/// listing's price stays explainable after the pricing constants are re-tuned.
+model CommuteProfile {
+  id        String  @id @default(cuid())
+  vehicleId String  @unique
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  homeLabel String
+  homeLat   Float
+  homeLng   Float
+  workLabel String
+  workLat   Float
+  workLng   Float
+
+  commuteDaysPerWeek Int    @default(5)
+  // AreaType: URBAN_CORE | URBAN | SUBURBAN | RURAL
+  areaType           String
+  // ParkingType: STREET_BUSY | LOT | GARAGE
+  parkingType        String
+
+  // --- derived (see src/lib/pricing.ts) ---
+  straightLineKm        Float
+  roadKm                Float
+  monthlyKm             Float
+  estMonthlyImpressions Int
+  exposureScore         Float
+  computedAt            DateTime @default(now())
+  // DECLARED | PLAUSIBLE | VERIFIED. Exact coordinates remain private.
+  routeConfidence       String   @default("DECLARED")
+}
+
+// ---------------------------------------------------------------- panels
+
+/// Reference table, seeded. Rates are tunable without a code change.
+/// widthCm/heightCm drive both the mockup scale and the real print size.
+model PanelType {
+  code          String @id
+  label         String
+  baseRateCents Int
+  widthCm       Float
+  heightCm      Float
+  sortOrder     Int
+
+  listings     PanelListing[]
+  campaignTargets CampaignPanelTarget[]
+  calibrations PanelCalibration[]
+}
+
+model PanelListing {
+  id            String    @id @default(cuid())
+  vehicleId     String
+  vehicle       Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  panelTypeCode String
+  panelType     PanelType @relation(fields: [panelTypeCode], references: [code])
+
+  // ListingStatus: DRAFT | ACTIVE | SOLD | EXPIRED | WITHDRAWN
+  status String @default("ACTIVE")
+
+  // Bids are a MONTHLY rent. Total contract value = monthly × termMonths.
+  startingRentCents Int
+  reserveRentCents  Int?
+  currentRentCents  Int
+  termMonths        Int @default(3)
+
+  // Snapshotted at creation so the price remains explainable later.
+  baseRateSnapshotCents Int
+  exposureSnapshot      Float
+
+  auctionEndsAt DateTime
+  winningBidId  String?
+  createdAt     DateTime @default(now())
+
+  bids         Bid[]
+  agreement    Agreement?
+  installation Installation?
+  fraudSignals FraudSignal[]
+  creativePlacements CreativePlacement[]
+
+  @@index([status, auctionEndsAt])
+  @@index([panelTypeCode])
+}
+
+// ---------------------------------------------------------------- brands
+
+/// A registered brand — the commercial identity behind an advertiser account.
+/// One per advertiser user. Reviewed by ops before its campaigns can go live,
+/// so drivers aren't asked to carry ads for an unvetted business.
+model Brand {
+  id      String @id @default(cuid())
+  ownerId String @unique
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name        String
+  slug        String  @unique
+  logoPath    String?
+  website     String?
+  industry    String
+  description String
+  contactEmail String?
+
+  // BrandStatus: PENDING_REVIEW | APPROVED | REJECTED
+  status     String    @default("PENDING_REVIEW")
+  reviewedAt DateTime?
+  reviewNotes String?
+
+  createdAt DateTime @default(now())
+
+  products  Product[]
+  campaigns Campaign[]
+
+  @@index([status])
+}
+
+/// A product the brand wants to advertise, with the image customers will see.
+/// A campaign promotes one product; the product image can be used directly as
+/// sticker artwork or as the basis for a purpose-made creative.
+model Product {
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String
+  category    String
+  /// Where the product image lives. Uploaded via /api/uploads.
+  imagePath      String?
+  imageWidthPx   Int?
+  imageHeightPx  Int?
+  /// Sampled on upload; feeds the contrast check against vehicle paint.
+  dominantHex    String?
+  /// Retail price, in cents. Display only — nothing is sold through this app.
+  priceCents     Int?
+  targetAudience String?
+
+  createdAt DateTime @default(now())
+
+  campaigns Campaign[]
+
+  @@index([brandId])
+}
+
+// ---------------------------------------------------------------- advertisers
+
+model Campaign {
+  id           String @id @default(cuid())
+  advertiserId String
+  advertiser   User   @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+
+  brandId   String?
+  brand     Brand?   @relation(fields: [brandId], references: [id])
+  /// The product this campaign promotes.
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+
+  name        String
+  budgetCents Int
+  spentCents  Int    @default(0)
+
+  targetLabel    String
+  targetLat      Float
+  targetLng      Float
+  targetRadiusKm Float
+
+  // What the advertiser is selling — used by the match score to judge fit.
+  productCategory String?
+  landingUrl      String
+
+  // CampaignStatus: DRAFT | ACTIVE | PAUSED | COMPLETED
+  status    String   @default("ACTIVE")
+  startsAt  DateTime
+  endsAt    DateTime
+  createdAt DateTime @default(now())
+
+  panelTargets CampaignPanelTarget[]
+  creatives    Creative[]
+  bids         Bid[]
+  agreements   Agreement[]
+
+  @@index([advertiserId])
+}
+
+/// Join table standing in for an array of panel codes (no Json on SQLite).
+model CampaignPanelTarget {
+  campaignId    String
+  campaign      Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  panelTypeCode String
+  panelType     PanelType @relation(fields: [panelTypeCode], references: [code])
+
+  @@id([campaignId, panelTypeCode])
+}
+
+/// An uploaded ad design.
+model Creative {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  fileName  String
+  filePath  String
+  mimeType  String
+  widthPx   Int
+  heightPx  Int
+  // Dominant colour (hex), sampled on upload — feeds the contrast check against
+  // the vehicle's paint colour in the match score.
+  dominantHex String?
+  isPrimary   Boolean @default(false)
+  createdAt   DateTime @default(now())
+
+  bids       Bid[]
+  agreements Agreement[]
+  placements CreativePlacement[]
+
+  @@index([campaignId])
+}
+
+model CreativePlacement {
+  id         String       @id @default(cuid())
+  creativeId String
+  creative   Creative     @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+  listingId  String
+  listing    PanelListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  scale      Float        @default(1)
+  offsetX    Float        @default(0)
+  offsetY    Float        @default(0)
+  rotation   Float        @default(0)
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([creativeId, listingId])
+}
+
+// ---------------------------------------------------------------- auction
+
+model Bid {
+  id           String       @id @default(cuid())
+  listingId    String
+  listing      PanelListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  campaignId   String
+  campaign     Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  advertiserId String
+  advertiser   User         @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  // Required at bid time so a winner always has artwork to print.
+  creativeId   String
+  creative     Creative     @relation(fields: [creativeId], references: [id])
+
+  monthlyAmountCents Int
+  // BidStatus: ACTIVE | OUTBID | WON | LOST
+  status             String   @default("ACTIVE")
+  createdAt          DateTime @default(now())
+  fraudSignals       FraudSignal[]
+
+  @@index([listingId, monthlyAmountCents])
+  @@index([campaignId])
+}
+
+// ---------------------------------------------------------------- contract
+
+model Agreement {
+  id        String       @id @default(cuid())
+  listingId String       @unique
+  listing   PanelListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  driverId     String
+  driver       User     @relation("DriverAgreements", fields: [driverId], references: [id])
+  advertiserId String
+  advertiser   User     @relation("AdvertiserAgreements", fields: [advertiserId], references: [id])
+  campaignId   String
+  campaign     Campaign @relation(fields: [campaignId], references: [id])
+  creativeId   String
+  creative     Creative @relation(fields: [creativeId], references: [id])
+
+  monthlyRentCents Int
+  termMonths       Int
+  totalValueCents  Int
+  startDate        DateTime
+  endDate          DateTime
+
+  // --- platform unit economics, computed at generation (src/lib/costs.ts) ---
+  // What the deal actually costs the operator, so margin is visible per deal.
+  driverPayoutCents  Int // what the driver receives over the full term
+  printCostCents     Int // vinyl + UV laminate, from panel area
+  shippingCostCents  Int
+  processingFeeCents Int // simulated payment processing
+  platformMarginCents Int // totalValue − payout − print − shipping − processing
+
+  // AgreementStatus: AWAITING_SIGNATURES | ACTIVE | COMPLETED | TERMINATED
+  status String @default("AWAITING_SIGNATURES")
+
+  driverSignedAt       DateTime?
+  driverSignedName     String?
+  advertiserSignedAt   DateTime?
+  advertiserSignedName String?
+
+  /// The rendered terms, snapshotted at generation time, so later edits to the
+  /// template can never alter an already-executed agreement.
+  bodyMarkdown String
+
+  createdAt DateTime @default(now())
+
+  installation Installation?
+
+  @@index([status])
+}
+
+// ---------------------------------------------------------------- fulfilment
+
+model Installation {
+  id          String       @id @default(cuid())
+  listingId   String       @unique
+  listing     PanelListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  agreementId String       @unique
+  agreement   Agreement    @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  qrSlug String @unique
+
+  // InstallationStatus: BLOCKED_UNSIGNED | PENDING_PRINT | SHIPPED | INSTALLED | VERIFIED | REMOVED
+  // Starts BLOCKED_UNSIGNED and is released to PENDING_PRINT only once BOTH
+  // parties have signed the agreement.
+  status      String    @default("BLOCKED_UNSIGNED")
+  installedAt DateTime?
+  verifiedAt  DateTime?
+  nextCheckAt DateTime?
+  adminNotes  String?
+  createdAt   DateTime  @default(now())
+
+  scans QrScan[]
+  checks VerificationCheck[]
+  proofs InstallationProof[]
+
+  @@index([status])
+}
+
+/// A one-time, expiring request for fresh evidence. INITIAL is required after
+/// installation; SPOT_CHECK is scheduled roughly monthly after verification.
+model VerificationCheck {
+  id             String       @id @default(cuid())
+  installationId String
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  // INITIAL | SPOT_CHECK
+  type           String
+  challengeCode  String       @unique
+  requestedAt    DateTime     @default(now())
+  expiresAt      DateTime
+  completedAt    DateTime?
+  // OPEN | SUBMITTED | APPROVED | REJECTED | EXPIRED
+  status         String       @default("OPEN")
+  proof          InstallationProof?
+
+  @@index([installationId, status])
+  @@index([expiresAt, status])
+}
+
+/// Capture evidence is private and served only through an authorised route.
+model InstallationProof {
+  id             String            @id @default(cuid())
+  installationId String
+  installation   Installation      @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  checkId        String            @unique
+  check          VerificationCheck @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  photoPath      String
+  mimeType       String
+  capturedAt     DateTime
+  submittedAt    DateTime          @default(now())
+  reviewedAt     DateTime?
+  reviewedBy     String?
+  // PENDING_REVIEW | APPROVED | REJECTED
+  status         String            @default("PENDING_REVIEW")
+  reviewNotes    String?
+
+  @@index([installationId, status])
+}
+
+/// Signals inform admin review; no single shared-IP or relationship signal
+/// automatically bans an account.
+model FraudSignal {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingId String?
+  listing   PanelListing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidId     String?
+  bid       Bid?          @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  type      String
+  riskScore Int
+  details   String
+  // OPEN | REVIEWED | DISMISSED | CONFIRMED
+  status    String        @default("OPEN")
+  createdAt DateTime      @default(now())
+
+  @@index([status, riskScore])
+  @@index([userId, createdAt])
+}
+
+/// Real measurement of a simulated market: every QR scan is recorded.
+model QrScan {
+  id             String       @id @default(cuid())
+  installationId String
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  scannedAt      DateTime     @default(now())
+  userAgent      String?
+  /// Hashed, never the raw IP.
+  ipHash         String?
+
+  @@index([installationId, scannedAt])
+}
+
+/// Simulated money movement. No payment processor is involved.
+model LedgerEntry {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // LedgerType: CHARGE | PAYOUT | COST
+  type        String
+  amountCents Int
+  /// "YYYY-MM" — which rent period this posting covers.
+  periodMonth String
+  agreementId String?
+  note        String
+  createdAt   DateTime @default(now())
+
+  @@index([userId, periodMonth])
+}
+
+// ---------------------------------------------------------------- reference
+
+/// Seeded metro lookup — stands in for a geocoding API. The commute form is a
+/// city picker rather than a free-text address box because there is no geocoder.
+model City {
+  id          String @id @default(cuid())
+  name        String
+  region      String
+  lat         Float
+  lng         Float
+  defaultArea String
+
+  @@unique([name, region])
+}
